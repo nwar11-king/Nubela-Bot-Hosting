@@ -12,38 +12,45 @@ async function startServer() {
   const getInstallerScript = () => {
     return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Ultra-Fast Installer
-# Version: 1.6.0
+# Version: 1.8.0
 
-# Colors for output
+# Colors
 RED='\\x1b[0;31m'
 GREEN='\\x1b[0;32m'
 YELLOW='\\x1b[1;33m'
 BLUE='\\x1b[0;34m'
 NC='\\x1b[0m'
 
-# Check for root early
+# Root Check
 if [ "$EUID" -ne 0 ]; then 
-  echo -e "\${RED}❌ ERROR: This script must be run as root.\${NC}"
-  echo -e "\${YELLOW}Try: curl -sSL https://get.bothosting.site | sudo bash\${NC}"
+  echo -e "\${RED}❌ ERROR: Root access required.\${NC}"
+  echo -e "\${YELLOW}Use: curl -sSL https://get.bothosting.site | sudo bash\${NC}"
   exit 1
 fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Optimized dependency tracker
-install_essential_deps() {
-    echo -e "\${BLUE}🔄 Syncing repositories and installing core tools...\${NC}"
-    apt-get update -y -q
-    apt-get install -y curl wget git build-essential nginx certbot python3-certbot-nginx unzip software-properties-common
+# Cache package lists once
+UPDATED=false
+update_apt() {
+    if [ "$UPDATED" = false ]; then
+        echo -e "\${BLUE}🔄 Syncing repositories...\${NC}"
+        apt-get update -y -qq >/dev/null 2>&1
+        UPDATED=true
+    fi
 }
 
-install_node() {
-    if ! command -v node &> /dev/null; then
-        echo -e "\${YELLOW}📦 Rapidly installing Node.js 20 LTS...\${NC}"
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        apt-get install -y nodejs
-    else
-        echo -e "\${GREEN}✅ Node.js is already installed (\$(node -v))\${NC}"
+install_pkg() {
+    local pkgs=()
+    for pkg in "\$@"; do
+        if ! command -v "\$pkg" &> /dev/null && ! dpkg -l "\$pkg" &> /dev/null; then
+            pkgs+=("\$pkg")
+        fi
+    done
+    if [ \${#pkgs[@]} -gt 0 ]; then
+        update_apt
+        echo -e "\${YELLOW}⚡ Adding: \${pkgs[*]}...\${NC}"
+        apt-get install -y -qq --no-install-recommends "\${pkgs[@]}" >/dev/null 2>&1
     fi
 }
 
@@ -58,43 +65,47 @@ echo -e "\${GREEN}
 \${NC}"
 
 echo -e "\${BLUE}==============================================\${NC}"
-echo -e "\${YELLOW}       NEBULA SYSTEM INSTALLER (v1.6.0)      \${NC}"
+echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.8.0)       \${NC}"
 echo -e "\${BLUE}==============================================\${NC}"
 
-echo "1) Full Panel Installation (Optimized)"
-echo "2) Node / Compute Deployment (Instant)"
-echo "3) System Diagnostics"
+echo "1) Full Panel Deployment (Real)"
+echo "2) Node / Daemon Setup"
+echo "3) System Information"
 echo "4) Exit"
 echo -e "\${BLUE}==============================================\${NC}"
-read -p "Select choice [1-4]: " MODE < /dev/tty
+read -p "Option [1-4]: " MODE < /dev/tty
 
 case \$MODE in
     1)
-        read -p "Domain: " DOMAIN < /dev/tty
-        read -p "Install MySQL? [y/n]: " DB_CONF < /dev/tty
-        read -p "Web Engine: [1] Nginx [2] Cloudflare: " WEB_CONF < /dev/tty
+        read -p "Your Domain: " DOMAIN < /dev/tty
+        read -p "Web Option: [1] Nginx [2] Cloudflare Tunnel: " WEB_CONF < /dev/tty
 
-        echo -e "\${YELLOW}--- Turbo-Charging Panel Setup ---\${NC}"
+        echo -e "\${YELLOW}--- Turbo Setup Active ---\${NC}"
         
-        install_essential_deps
-        install_node
+        # Immediate essential fetch
+        install_pkg curl wget git build-essential nginx certbot python3-certbot-nginx
 
-        if [ "\$DB_CONF" == "y" ]; then
-            echo -e "\${BLUE}💾 Installing MySQL Server...\${NC}"
-            apt-get install -y mysql-server
-            mysql -e "CREATE DATABASE IF NOT EXISTS nebula;"
+        # Node.js 20 check
+        if ! command -v node &> /dev/null; then
+            echo -e "\${YELLOW}📦 Fast-tracking Node.js 20...\${NC}"
+            curl -sSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+            apt-get install -y -qq nodejs >/dev/null 2>&1
         fi
 
-        echo -e "\${BLUE}📥 Deploying system files to /var/www/nebula...\${NC}"
+        # Get Server IP
+        SERVER_IP=\$(curl -s https://ident.me || curl -s https://ifconfig.me)
+
+        # File setup
         mkdir -p /var/www/nebula
         cd /var/www/nebula
         if [ ! -d ".git" ]; then
-            git clone --quiet --depth 1 https://github.com/NebulaHosting/Panel.git .
+            echo -e "\${BLUE}📥 Pulling panel code...\${NC}"
+            git clone --quiet --depth 1 https://github.com/NebulaHosting/Panel.git . 2>/dev/null
         fi
 
+        # Nginx Config
         if [ "\$WEB_CONF" == "1" ]; then
-            echo -e "\${BLUE}🌐 High-speed Nginx Configuration...\${NC}"
-            mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+            echo -e "\${BLUE}🌐 Setting up Nginx VHost...\${NC}"
             cat <<EOF > /etc/nginx/sites-available/nebula.conf
 server {
     listen 80;
@@ -104,30 +115,41 @@ server {
         proxy_set_header Host \\\$host;
         proxy_set_header X-Real-IP \\\$remote_addr;
         proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
     }
 }
 EOF
             ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
             rm -f /etc/nginx/sites-enabled/default
-            nginx -t && systemctl restart nginx
+            nginx -t >/dev/null 2>&1 && systemctl restart nginx
+
+            echo -e "\${GREEN}✅ Nginx Configured.\${NC}"
+            echo -e "\${YELLOW}⚠️ DNS INSTRUCTIONS:\${NC}"
+            echo -e "   1. Go to your DNS provider (Cloudflare, Namecheap, etc.)"
+            echo -e "   2. Add an \${BLUE}A Record\${NC} for \${GREEN}\$DOMAIN\${NC}"
+            echo -e "   3. Point it to IP: \${GREEN}\$SERVER_IP\${NC}"
+            echo -e "   4. For Cloudflare: Use \${RED}DNS Only\${NC} first, then switch to Proxied after SSL."
             
-            read -p "Enable SSL (y/n)? " SSL_YN < /dev/tty
+            read -p "Apply SSL now? (y/n): " SSL_YN < /dev/tty
             if [ "\$SSL_YN" == "y" ]; then
-                certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m admin@\$DOMAIN
+                certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m admin@\$DOMAIN --quiet
             fi
         elif [ "\$WEB_CONF" == "2" ]; then
-            read -p "Cloudflare Tunnel Token: " CF_TOKEN < /dev/tty
+            read -p "Paste Your Tunnel Token: " CF_TOKEN < /dev/tty
             if [ -n "\$CF_TOKEN" ]; then
-                curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -s
-                dpkg -i /tmp/cloudflared.deb
-                cloudflared service install "\$CF_TOKEN" && systemctl start cloudflared
+                if ! command -v cloudflared &> /dev/null; then
+                    curl -sL --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+                    dpkg -i /tmp/cloudflared.deb >/dev/null 2>&1
+                fi
+                cloudflared service install "\$CF_TOKEN" >/dev/null 2>&1 && systemctl start cloudflared
+                echo -e "\${GREEN}✅ Cloudflare Tunnel is now Active.\${NC}"
             fi
         fi
 
-        echo -e "\${YELLOW}⚙️ Setting up Nebula Daemon Service...\${NC}"
+        # Persistence
         cat <<EOF > /etc/systemd/system/nebula.service
 [Unit]
-Description=Nebula Backend
+Description=Nebula Panel
 After=network.target
 
 [Service]
@@ -139,24 +161,24 @@ Restart=always
 WantedBy=multi-user.target
 EOF
         systemctl daemon-reload
-        echo -e "\${GREEN}🏁 SETUP COMPLETE! Access via: http://\$DOMAIN\${NC}"
-        read -p "Done. Press Enter." < /dev/tty
+        echo -e "\${GREEN}🚀 DEPLOYMENT 100% COMPLETE!\${NC}"
+        echo -e "\${BLUE}Address: http://\$DOMAIN (\${SERVER_IP})\${NC}"
+        read -p "Press Enter to finish." < /dev/tty
         ;;
     2)
-        echo -e "\${YELLOW}--- Rapid Node Setup ---\${NC}"
-        read -p "Node Nickname: " NNAME < /dev/tty
+        echo -e "\${YELLOW}--- Node Runner Setup ---\${NC}"
         if ! command -v docker &> /dev/null; then
-            echo -e "\${BLUE}🐳 Installing Docker Engine...\${NC}"
-            curl -fsSL https://get.docker.com | sh
+            echo -e "\${BLUE}🐳 Deploying Docker Engine...\${NC}"
+            curl -sSL https://get.docker.com | sh >/dev/null 2>&1
         fi
-        echo -e "\${GREEN}✅ Node '\$NNAME' initialized.\${NC}"
+        echo -e "\${GREEN}✅ Node is ready to be linked.\${NC}"
         read -p "Press Enter." < /dev/tty
         ;;
     3)
-        echo -e "\${BLUE}--- System Metrics ---\${NC}"
-        free -h
-        df -h /
-        uptime
+        echo -e "\${BLUE}--- Server Specs ---\${NC}"
+        echo -e "Public IP: \$(curl -s ident.me || echo 'Unknown')"
+        free -h | awk '/^Mem:/ {print "RAM: "\$3"/"\$2}'
+        df -h / | awk 'NR==2 {print "Disk: "\$3"/"\$2}'
         read -p "Press Enter." < /dev/tty
         ;;
     4)
@@ -170,7 +192,8 @@ done
   // CLI Handler
   app.get("/", (req, res, next) => {
     const ua = (req.headers["user-agent"] || "").toLowerCase();
-    if (ua.includes("curl") || ua.includes("wget") || ua.includes("bash")) {
+    const isCli = /curl|wget|bash|fetch/i.test(ua) && !ua.includes("mozilla");
+    if (isCli) {
       res.setHeader("Content-Type", "text/x-shellscript");
       return res.send(getInstallerScript());
     }
@@ -178,10 +201,10 @@ done
   });
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "1.6.0" });
+    res.json({ status: "ok", version: "1.8.0" });
   });
 
-  // Vite/Static serve
+  // Serve static UI
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
@@ -192,7 +215,7 @@ done
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log("Nebula Server running on :" + PORT);
+    console.log("Nebula 1.8.0 running on :" + PORT);
   });
 }
 
