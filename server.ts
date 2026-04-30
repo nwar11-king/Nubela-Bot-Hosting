@@ -176,4 +176,8 @@ fi
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("Critical Failure during server startup:");
+  console.error(err);
+  process.exit(1);
+});
