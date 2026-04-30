@@ -13,7 +13,7 @@ Nebula is a modern, high-performance hosting control panel designed for Discord 
 Deploy your panel or a new compute node to any Ubuntu/Debian server using the official installer:
 
 ```bash
-curl -sSL https://get.bothosting.site/installer.sh | bash
+curl -sSL https://get.bothosting.site | bash
 ```
 
 ### What it does:
