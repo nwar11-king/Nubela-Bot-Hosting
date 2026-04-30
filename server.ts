@@ -14,9 +14,9 @@ async function startServer() {
     res.json({ status: "ok", version: "1.0.0" });
   });
 
-  // Installer Script Endpoint
-  app.get("/installer.sh", (req, res) => {
-    const script = `#!/bin/bash
+  // Installer Script logic
+  const getInstallerScript = () => {
+    return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Advanced Installer
 # Version: 1.1.0
 
@@ -33,7 +33,7 @@ echo -e "\\\${GREEN}
  ██ ▀█   █ ▓█   ▀ ▓█████▄ ██  ▓██▒▓██▒   ▒████▄    
 ▓██  ▀█ ██▒▒███   ▒██▒ ▄██▓██  ▒██░▒██░   ▒██  ▀█▄  
 ▓██▒  ▐▌██▒▒▓█  ▄ ▒██░█▀  ▓██  ░██░▒██░   ░██▄▄▄▄██ 
-▒██░   ▓██░░▒████▒░▓█  ▀█▓░▒█████▓ ░██████▒▓█   ▓██▒
+ ▒██░   ▓██░░▒████▒░▓█  ▀█▓░▒█████▓ ░██████▒▓█   ▓██▒
 \\\${NC}"
 
 echo -e "\\\${BLUE}==============================================\\\${NC}"
@@ -144,10 +144,23 @@ elif [ "\\\$MODE" == "2" ]; then
     echo -e "\\\${GREEN}✅ Node '\\\$NODE_NAME' configured and ready to link.\\\${NC}"
 fi
 `;
+  };
+
+  // Installer Script Endpoint
+  app.get("/installer.sh", (req, res) => {
     res.setHeader("Content-Type", "text/x-shellscript");
-    res.send(script);
+    res.send(getInstallerScript());
   });
 
+  // Handle root level curl requests for easier installation
+  app.get("/", (req, res, next) => {
+    const userAgent = req.headers["user-agent"] || "";
+    if (userAgent.toLowerCase().includes("curl")) {
+      res.setHeader("Content-Type", "text/x-shellscript");
+      return res.send(getInstallerScript());
+    }
+    next();
+  });
   app.post("/api/nodes/register", (req, res) => {
     const { apiKey, name, specs } = req.body;
     console.log("Node Registration received: " + name + " with key " + apiKey);

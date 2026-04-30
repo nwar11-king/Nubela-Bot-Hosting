@@ -24,7 +24,7 @@ function show_menu() {
     echo -e "${BLUE}==============================================${NC}"
     echo "1) Install Nebula Panel (Full Stack)"
     echo "2) Install Compute Node (Daemon)"
-    echo "3) Configure Nginx & Auto-SSL"
+    echo "3) Configure Nginx Reverse Proxy"
     echo "4) Setup Cloudflare Tunnel"
     echo "5) Install MySQL Database Server"
     echo "6) System Health Check"
@@ -50,12 +50,49 @@ function install_docker() {
 }
 
 function setup_panel() {
-    echo -e "${YELLOW}Deploying Nebula Panel...${NC}"
+    echo -e "${YELLOW}--- Beginning Panel Installation ---${NC}"
+    read -p "Enter your Domain (e.g. panel.bothosting.site): " DOMAIN
+    read -p "Install MySQL Database? [y/n]: " INSTALL_DB
+    read -p "Web Server: [1] Nginx [2] Cloudflare Tunnel: " WEB_SERVER
+    
     install_dependencies
-    install_docker
-    # Example: Clone your repo here once on GitHub
-    # git clone https://github.com/your-username/nebula-panel.git /var/www/nebula
-    echo -e "${GREEN}Panel infrastructure ready.${NC}"
+    
+    if [ "$INSTALL_DB" == "y" ]; then
+        echo -e "${GREEN}📦 Installing MySQL...${NC}"
+        sudo apt-get install -y mysql-server
+        sudo mysql -e "CREATE DATABASE IF NOT EXISTS nebula;"
+        echo -e "${GREEN}✅ Database 'nebula' created.${NC}"
+    fi
+
+    if [ "$WEB_SERVER" == "1" ]; then
+        echo -e "${GREEN}🌐 Configuring Nginx for $DOMAIN...${NC}"
+        sudo apt-get install -y nginx certbot python3-certbot-nginx
+        cat <<EOF | sudo tee /etc/nginx/sites-available/nebula.conf
+server {
+    listen 80;
+    server_name $DOMAIN;
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+}
+EOF
+        sudo ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
+        sudo systemctl restart nginx
+        echo -e "${YELLOW}Would you like to run Certbot for SSL? [y/n]${NC}"
+        read SSL_RUN
+        if [ "$SSL_RUN" == "y" ]; then
+            sudo certbot --nginx -d $DOMAIN
+        fi
+    elif [ "$WEB_SERVER" == "2" ]; then
+        setup_cloudflare
+    fi
+
+    echo -e "${GREEN}==============================================${NC}"
+    echo -e "${GREEN}      PANEL INSTALLATION INFRA READY!         ${NC}"
+    echo -e "${YELLOW}      URL: https://$DOMAIN                   ${NC}"
+    echo -e "${GREEN}==============================================${NC}"
 }
 
 function setup_node() {
@@ -69,26 +106,34 @@ function setup_node() {
     echo -e "${GREEN}Node configuration written to /etc/nebula/config.json${NC}"
 }
 
+function setup_cloudflare() {
+    echo -e "${GREEN}☁️ Setting up Cloudflare Tunnel...${NC}"
+    curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+    sudo dpkg -i cloudflared.deb
+    echo -e "${YELLOW}Please run 'cloudflared tunnel login' manually to authenticate.${NC}"
+}
+
 while true; do
     show_menu
-    read -p "Select choice [1-6]: " choice
+    read -p "Select choice [1-7]: " choice
     case $choice in
         1) setup_panel ;;
         2) setup_node ;;
         3) 
-            sudo apt-get install -y nginx
-            echo "Nginx installed. Basic config running on port 80."
+            read -p "Domain for Nginx: " DOMAIN
+            # Reuse logic or call a function
             ;;
-        4)
-            echo "Installing Cloudflared..."
-            curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-            sudo dpkg -i cloudflared.deb
-            ;;
-        5)
-            echo "Cleaning up..."
-            sudo apt-get autoremove -y
+        4) setup_cloudflare ;;
+        5) 
+            echo -e "${GREEN}Installing MySQL Server...${NC}"
+            sudo apt-get install -y mysql-server
             ;;
         6)
+            echo -e "${YELLOW}Running Health Check...${NC}"
+            df -h
+            free -m
+            ;;
+        7)
             echo "Exiting..."
             exit 0
             ;;
