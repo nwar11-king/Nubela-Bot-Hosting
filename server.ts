@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import fs from "fs";
 
 async function startServer() {
   const app = express();
@@ -11,9 +10,11 @@ async function startServer() {
 
   // Installer Script logic
   const getInstallerScript = () => {
+    // We use a helper to properly escape dollar signs for the shell script
+    // while keeping them as literal strings in the TS template literal.
     return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Advanced Installer
-# Version: 1.1.5
+# Version: 1.2.5
 
 # Colors for output
 RED='\\x1b[0;31m'
@@ -22,6 +23,7 @@ YELLOW='\\x1b[1;33m'
 BLUE='\\x1b[0;34m'
 NC='\\x1b[0m' # No Color
 
+while true; do
 clear
 echo -e "\${GREEN}
  ███▄    █ ▓█████  ▄▄▄▄   █    ██  ██▓    ▄▄▄      
@@ -32,7 +34,7 @@ echo -e "\${GREEN}
 \${NC}"
 
 echo -e "\${BLUE}==============================================\${NC}"
-echo -e "\${YELLOW}       NEBULA SYSTEM INSTALLER (v1.1)        \${NC}"
+echo -e "\${YELLOW}       NEBULA SYSTEM INSTALLER (v1.2)        \${NC}"
 echo -e "\${BLUE}==============================================\${NC}"
 
 # Check for root
@@ -44,31 +46,31 @@ echo "1) Install Nebula Panel (Web UI)"
 echo "2) Install Nebula Node (Daemon)"
 echo "3) System Health Check"
 echo "4) Exit"
-read -p "Select mode [1-4]: " MODE
+echo -e "\${BLUE}==============================================\${NC}"
+read -p "Select mode [1-4]: " MODE < /dev/tty
 
-if [ "\$MODE" == "1" ]; then
-    read -p "Enter your Domain (e.g. panel.bothosting.site): " DOMAIN
-    read -p "Install MySQL Database? [y/n]: " INSTALL_DB
-    read -p "Web Server: [1] Nginx [2] Cloudflare Tunnel: " WEB_SERVER
+case \$MODE in
+    1)
+        read -p "Enter your Domain (e.g. panel.bothosting.site): " DOMAIN < /dev/tty
+        read -p "Install MySQL Database? [y/n]: " INSTALL_DB < /dev/tty
+        read -p "Web Server: [1] Nginx [2] Cloudflare Tunnel: " WEB_SERVER < /dev/tty
 
-    echo -e "\${YELLOW}--- Beginning Panel Installation ---\${NC}"
+        echo -e "\${YELLOW}--- Beginning Panel Installation ---\${NC}"
+        # 1. Dependencies
+        apt-get update && apt-get install -y curl wget git nginx certbot python3-certbot-nginx
 
-    # 1. Dependencies
-    apt-get update && apt-get install -y curl wget git nginx certbot python3-certbot-nginx
+        # 2. Database
+        if [ "\$INSTALL_DB" == "y" ]; then
+            echo -e "\${GREEN}📦 Installing MySQL...\${NC}"
+            apt-get install -y mysql-server
+            mysql -e "CREATE DATABASE IF NOT EXISTS nebula;"
+            echo -e "\${GREEN}✅ Database 'nebula' created.\${NC}"
+        fi
 
-    # 2. Database
-    if [ "\$INSTALL_DB" == "y" ]; then
-        echo -e "\${GREEN}📦 Installing MySQL...\${NC}"
-        apt-get install -y mysql-server
-        # Setup basic DB
-        mysql -e "CREATE DATABASE IF NOT EXISTS nebula;"
-        echo -e "\${GREEN}✅ Database 'nebula' created.\${NC}"
-    fi
-
-    # 3. Web Server
-    if [ "\$WEB_SERVER" == "1" ]; then
-        echo -e "\${GREEN}🌐 Configuring Nginx for \$DOMAIN...\${NC}"
-        cat <<EOF > /etc/nginx/sites-available/nebula.conf
+        # 3. Web Server
+        if [ "\$WEB_SERVER" == "1" ]; then
+            echo -e "\${GREEN}🌐 Configuring Nginx for \$DOMAIN...\${NC}"
+            cat <<EOF > /etc/nginx/sites-available/nebula.conf
 server {
     listen 80;
     server_name \$DOMAIN;
@@ -79,59 +81,82 @@ server {
     }
 }
 EOF
-        ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
-        systemctl restart nginx
-        echo -e "\${YELLOW}Do you want to enable SSL (Certbot)? [y/n]\${NC}"
-        read SSL_CONF
-        if [ "\$SSL_CONF" == "y" ]; then
-            certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m admin@\$DOMAIN
+            ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
+            systemctl restart nginx
+            echo -e "\${YELLOW}Do you want to enable SSL (Certbot)? [y/n]\${NC}"
+            read SSL_CONF < /dev/tty
+            if [ "\$SSL_CONF" == "y" ]; then
+                certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m admin@\$DOMAIN
+            fi
+        elif [ "\$WEB_SERVER" == "2" ]; then
+            echo -e "\${GREEN}☁️ Setting up Cloudflare Tunnel...\${NC}"
+            curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+            dpkg -i cloudflared.deb
+            echo -e "\${YELLOW}Please run 'cloudflared tunnel login' manually after installation.\${NC}"
         fi
-    elif [ "\$WEB_SERVER" == "2" ]; then
-        echo -e "\${GREEN}☁️ Setting up Cloudflare Tunnel...\${NC}"
-        curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-        dpkg -i cloudflared.deb
-        echo -e "\${YELLOW}Please run 'cloudflared tunnel login' manually after installation.\${NC}"
-    fi
 
-    echo -e "\${GREEN}==============================================\${NC}"
-    echo -e "\${GREEN}      PANEL INSTALLATION COMPLETE!            \${NC}"
-    echo -e "\${YELLOW}      URL: https://\$DOMAIN                   \${NC}"
-    echo -e "\${GREEN}==============================================\${NC}"
-
-elif [ "\$MODE" == "2" ]; then
-    echo -e "\${YELLOW}--- Node Installation Mode ---\${NC}"
-    read -p "Enter Node Name: " NODE_NAME
-    read -p "Enter Panel API Key: " PANEL_KEY
-    
-    # Node logic (Docker based)
-    if ! command -v docker &> /dev/null; then
-        echo -e "\${YELLOW}Installing Docker...\${NC}"
-        curl -fsSL https://get.docker.com | sh
-    fi
-    echo -e "\${GREEN}✅ Node '\$NODE_NAME' configured and ready to link.\${NC}"
-
-elif [ "\$MODE" == "3" ]; then
-    echo -e "\${BLUE}--- System Health Check ---\${NC}"
-    if command -v lscpu &> /dev/null; then
-        lscpu | grep "Model name"
-    elif [ -f /proc/cpuinfo ]; then
-        grep "model name" /proc/cpuinfo | head -n 1
-    fi
-    free -h
-    df -h /
-fi
+        echo -e "\${GREEN}==============================================\${NC}"
+        echo -e "\${GREEN}      PANEL INSTALLATION COMPLETE!            \${NC}"
+        echo -e "\${YELLOW}      URL: https://\$DOMAIN                   \${NC}"
+        echo -e "\${GREEN}==============================================\${NC}"
+        read -p "Press Enter to return to menu..." < /dev/tty
+        ;;
+    2)
+        echo -e "\${YELLOW}--- Node Installation Mode ---\${NC}"
+        read -p "Enter Node Name: " NODE_NAME < /dev/tty
+        read -p "Enter Panel API Key: " PANEL_KEY < /dev/tty
+        
+        if ! command -v docker &> /dev/null; then
+            echo -e "\${YELLOW}Installing Docker...\${NC}"
+            curl -fsSL https://get.docker.com | sh
+        fi
+        echo -e "\${GREEN}✅ Node '\$NODE_NAME' configured and ready to link.\${NC}"
+        read -p "Press Enter to return to menu..." < /dev/tty
+        ;;
+    3)
+        echo -e "\${BLUE}--- System Health Check ---\${NC}"
+        if command -v lscpu &> /dev/null; then
+            lscpu | grep "Model name"
+        elif [ -f /proc/cpuinfo ]; then
+            grep "model name" /proc/cpuinfo | head -n 1
+        fi
+        free -h
+        df -h /
+        read -p "Press Enter to return to menu..." < /dev/tty
+        ;;
+    4)
+        echo -e "\${GREEN}Exiting Nebula Installer. Goodbye!\${NC}"
+        exit 0
+        ;;
+    *)
+        if [ ! -z "\$MODE" ]; then
+            echo -e "\${RED}Invalid option: \$MODE. Please select 1-4.\${NC}"
+            sleep 1
+        fi
+        ;;
+esac
+done
 `;
   };
 
   // Handle root level curl/wget requests for easy installation
   app.get("/", (req, res, next) => {
-    const userAgent = req.headers["user-agent"] || "";
-    console.log(`Incoming request to / from UA: ${userAgent}`);
+    const userAgent = (req.headers["user-agent"] || "").toLowerCase();
+    const accept = (req.headers["accept"] || "").toLowerCase();
     
-    // Check if the request is coming from a CLI tool
-    const isCli = /curl|wget|bash|fetch|insomnia|postman/i.test(userAgent);
+    // Check if the request is likely from a CLI tool
+    const isCli = userAgent.includes("curl") || 
+                  userAgent.includes("wget") || 
+                  userAgent.includes("bash") ||
+                  userAgent.includes("fetch");
+                  
+    // Check Accept header - if it's strictly not HTML it might be a script request
+    const feelsLikeCli = (accept.includes("*/*") && !accept.includes("text/html"));
     
-    if (isCli) {
+    // Safety: Browsers usually have "mozilla" in UA, CLI tools don't
+    const isActuallyCli = (isCli || feelsLikeCli) && !userAgent.includes("mozilla");
+
+    if (isActuallyCli) {
       res.setHeader("Content-Type", "text/x-shellscript");
       return res.send(getInstallerScript());
     }
@@ -146,15 +171,12 @@ fi
 
   // API Routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "1.1.2" });
+    res.json({ status: "ok", version: "1.2.5" });
   });
 
-
   app.post("/api/nodes/register", (req, res) => {
-    const { apiKey, name, specs } = req.body;
+    const { apiKey, name } = req.body;
     console.log("Node Registration received: " + name + " with key " + apiKey);
-    // In a real app, we'd verify the apiKey and update Firestore here.
-    // Since we're doing client-side logic mostly, we'll just acknowledge.
     res.json({ success: true, message: "Node registered successfully" });
   });
 
