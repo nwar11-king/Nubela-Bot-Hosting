@@ -21,28 +21,28 @@ async function startServer() {
 # Version: 1.1.0
 
 # Colors for output
-RED='\x1b[0;31m'
-GREEN='\x1b[0;32m'
-YELLOW='\x1b[1;33m'
-BLUE='\x1b[0;34m'
-NC='\x1b[0m' # No Color
+RED='\\x1b[0;31m'
+GREEN='\\x1b[0;32m'
+YELLOW='\\x1b[1;33m'
+BLUE='\\x1b[0;34m'
+NC='\\x1b[0m' # No Color
 
 clear
-echo -e "${GREEN}
+echo -e "\\\${GREEN}
  ███▄    █ ▓█████  ▄▄▄▄   █    ██  ██▓    ▄▄▄      
  ██ ▀█   █ ▓█   ▀ ▓█████▄ ██  ▓██▒▓██▒   ▒████▄    
 ▓██  ▀█ ██▒▒███   ▒██▒ ▄██▓██  ▒██░▒██░   ▒██  ▀█▄  
 ▓██▒  ▐▌██▒▒▓█  ▄ ▒██░█▀  ▓██  ░██░▒██░   ░██▄▄▄▄██ 
 ▒██░   ▓██░░▒████▒░▓█  ▀█▓░▒█████▓ ░██████▒▓█   ▓██▒
-${NC}"
+\\\${NC}"
 
-echo -e "${BLUE}==============================================${NC}"
-echo -e "${YELLOW}       NEBULA SYSTEM INSTALLER (v1.1)        ${NC}"
-echo -e "${BLUE}==============================================${NC}"
+echo -e "\\\${BLUE}==============================================\\\${NC}"
+echo -e "\\\${YELLOW}       NEBULA SYSTEM INSTALLER (v1.1)        \\\${NC}"
+echo -e "\\\${BLUE}==============================================\\\${NC}"
 
 # Check for root
-if [ "$EUID" -ne 0 ]; then 
-  echo -e "${RED}Please run as root!${NC}"
+if [ "\\\$EUID" -ne 0 ]; then 
+  echo -e "\\\${RED}Please run as root!\\\${NC}"
   exit 1
 fi
 
@@ -51,29 +51,29 @@ echo "2) Install Nebula Node (Daemon)"
 echo "3) Exit"
 read -p "Select mode [1-3]: " MODE
 
-if [ "$MODE" == "1" ]; then
+if [ "\\\$MODE" == "1" ]; then
     read -p "Enter your Domain (e.g. panel.bothosting.site): " DOMAIN
     read -p "Install MySQL Database? [y/n]: " INSTALL_DB
     read -p "Web Server: [1] Nginx [2] Cloudflare Tunnel: " WEB_SERVER
     read -p "Use Docker for Panel? [y/n]: " USE_DOCKER
 
-    echo -e "${YELLOW}--- Beginning Panel Installation ---${NC}"
+    echo -e "\\\${YELLOW}--- Beginning Panel Installation ---\\\${NC}"
 
     # 1. Dependencies
     apt-get update && apt-get install -y curl wget git nginx certbot python3-certbot-nginx
 
     # 2. Database
-    if [ "$INSTALL_DB" == "y" ]; then
-        echo -e "${GREEN}📦 Installing MySQL...${NC}"
+    if [ "\\\$INSTALL_DB" == "y" ]; then
+        echo -e "\\\${GREEN}📦 Installing MySQL...\\\${NC}"
         apt-get install -y mysql-server
         # Setup basic DB
         mysql -e "CREATE DATABASE IF NOT EXISTS nebula;"
-        echo -e "${GREEN}✅ Database 'nebula' created.${NC}"
+        echo -e "\\\${GREEN}✅ Database 'nebula' created.\\\${NC}"
     fi
 
     # 3. Docker setup
-    if [ "$USE_DOCKER" == "y" ]; then
-        echo -e "${GREEN}🐳 Setting up Docker Compose for Panel...${NC}"
+    if [ "\\\$USE_DOCKER" == "y" ]; then
+        echo -e "\\\${GREEN}🐳 Setting up Docker Compose for Panel...\\\${NC}"
         if ! command -v docker &> /dev/null; then
             curl -fsSL https://get.docker.com | sh
         fi
@@ -86,7 +86,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DOMAIN=$DOMAIN
+      - DOMAIN=\\\$DOMAIN
       - DB_HOST=db
     depends_on:
       - db
@@ -96,44 +96,44 @@ services:
       - MYSQL_DATABASE=nebula
       - MYSQL_ROOT_PASSWORD=nebula_secure_pass
 EOF
-        echo -e "${GREEN}✅ Docker Compose file generated at /var/www/nebula/docker-compose.yml${NC}"
+        echo -e "\\\${GREEN}✅ Docker Compose file generated at /var/www/nebula/docker-compose.yml\\\${NC}"
     fi
 
     # 4. Web Server
-    if [ "$WEB_SERVER" == "1" ]; then
-        echo -e "${GREEN}🌐 Configuring Nginx for $DOMAIN...${NC}"
+    if [ "\\\$WEB_SERVER" == "1" ]; then
+        echo -e "\\\${GREEN}🌐 Configuring Nginx for \\\$DOMAIN...\\\${NC}"
         cat <<EOF > /etc/nginx/sites-available/nebula.conf
 server {
     listen 80;
-    server_name $DOMAIN;
+    server_name \\\$DOMAIN;
     location / {
         proxy_pass http://localhost:3000;
-        proxy_set_header Host \\$host;
-        proxy_set_header X-Real-IP \\$remote_addr;
+        proxy_set_header Host \\\\\\\$host;
+        proxy_set_header X-Real-IP \\\\\\\$remote_addr;
     }
 }
 EOF
         ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
         systemctl restart nginx
-        echo -e "${YELLOW}Do you want to enable SSL (Certbot)? [y/n]${NC}"
+        echo -e "\\\${YELLOW}Do you want to enable SSL (Certbot)? [y/n]\\\${NC}"
         read SSL_CONF
-        if [ "$SSL_CONF" == "y" ]; then
-            certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN
+        if [ "\\\$SSL_CONF" == "y" ]; then
+            certbot --nginx -d \\\$DOMAIN --non-interactive --agree-tos -m admin@\\\$DOMAIN
         fi
-    elif [ "$WEB_SERVER" == "2" ]; then
-        echo -e "${GREEN}☁️ Setting up Cloudflare Tunnel...${NC}"
+    elif [ "\\\$WEB_SERVER" == "2" ]; then
+        echo -e "\\\${GREEN}☁️ Setting up Cloudflare Tunnel...\\\${NC}"
         curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
         dpkg -i cloudflared.deb
-        echo -e "${YELLOW}Please run 'cloudflared tunnel login' and 'cloudflared tunnel create nebula' manually after installation.${NC}"
+        echo -e "\\\${YELLOW}Please run 'cloudflared tunnel login' and 'cloudflared tunnel create nebula' manually after installation.\\\${NC}"
     fi
 
-    echo -e "${GREEN}==============================================${NC}"
-    echo -e "${GREEN}      PANEL INSTALLATION COMPLETE!            ${NC}"
-    echo -e "${YELLOW}      URL: https://$DOMAIN                   ${NC}"
-    echo -e "${GREEN}==============================================${NC}"
+    echo -e "\\\${GREEN}==============================================\\\${NC}"
+    echo -e "\\\${GREEN}      PANEL INSTALLATION COMPLETE!            \\\${NC}"
+    echo -e "\\\${YELLOW}      URL: https://\\\$DOMAIN                   \\\${NC}"
+    echo -e "\\\${GREEN}==============================================\\\${NC}"
 
-elif [ "$MODE" == "2" ]; then
-    echo -e "${YELLOW}--- Node Installation Mode ---${NC}"
+elif [ "\\\$MODE" == "2" ]; then
+    echo -e "\\\${YELLOW}--- Node Installation Mode ---\\\${NC}"
     read -p "Enter Node Name: " NODE_NAME
     read -p "Enter Panel API Key: " PANEL_KEY
     
@@ -141,7 +141,7 @@ elif [ "$MODE" == "2" ]; then
     if ! command -v docker &> /dev/null; then
         curl -fsSL https://get.docker.com | sh
     fi
-    echo -e "${GREEN}✅ Node '$NODE_NAME' configured and ready to link.${NC}"
+    echo -e "\\\${GREEN}✅ Node '\\\$NODE_NAME' configured and ready to link.\\\${NC}"
 fi
 `;
     res.setHeader("Content-Type", "text/x-shellscript");
@@ -150,7 +150,7 @@ fi
 
   app.post("/api/nodes/register", (req, res) => {
     const { apiKey, name, specs } = req.body;
-    console.log(`Node Registration received: ${name} with key ${apiKey}`);
+    console.log("Node Registration received: " + name + " with key " + apiKey);
     // In a real app, we'd verify the apiKey and update Firestore here.
     // Since we're doing client-side logic mostly, we'll just acknowledge.
     res.json({ success: true, message: "Node registered successfully" });
@@ -172,7 +172,7 @@ fi
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log("Server running on http://localhost:" + PORT);
   });
 }
 

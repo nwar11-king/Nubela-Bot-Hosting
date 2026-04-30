@@ -4,8 +4,7 @@ import {
   RotateCcw, Terminal, Settings, Trash2, Search, Filter,
   PlusCircle, Globe, Loader2, X
 } from "lucide-react";
-import { collection, query, onSnapshot, addDoc, serverTimestamp, where, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db, auth } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 
@@ -23,35 +22,57 @@ export default function Servers() {
   const [newImage, setNewImage] = useState("node:18-alpine");
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const q = query(collection(db, "servers"), where("ownerId", "==", auth.currentUser.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      setBots(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchData = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data: serverData } = await supabase
+        .from("servers")
+        .select("*")
+        .eq("owner_id", session.user.id);
+      
+      const { data: nodeData } = await supabase.from("nodes").select("*");
+
+      setBots(serverData || []);
+      setNodes(nodeData || []);
       setLoading(false);
-    });
+    };
 
-    const nodesUnsub = onSnapshot(collection(db, "nodes"), (snap) => {
-      setNodes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    fetchData();
 
-    return () => { unsub(); nodesUnsub(); };
+    const channel = supabase
+      .channel("servers-user")
+      .on("postgres_changes", { event: "*", schema: "public", table: "servers" }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          setBots(prev => [...prev, payload.new]);
+        } else if (payload.eventType === "UPDATE") {
+          setBots(prev => prev.map(b => b.id === payload.new.id ? payload.new : b));
+        } else if (payload.eventType === "DELETE") {
+          setBots(prev => prev.filter(b => b.id === payload.old.id));
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    
     try {
-      await addDoc(collection(db, "servers"), {
+      const { error } = await supabase.from("servers").insert({
         name: newName,
         subdomain: newSubdomain,
-        nodeId: newNodeId,
-        ownerId: auth.currentUser.uid,
+        node_id: newNodeId,
+        owner_id: session.user.id,
         status: "starting",
-        dockerImage: newImage,
-        cpuUsage: 0,
-        memoryUsage: 0,
-        createdAt: serverTimestamp()
+        docker_image: newImage,
+        cpu_usage: 0,
+        memory_usage: 0
       });
+      if (error) throw error;
       setShowCreateModal(false);
       setNewName("");
       setNewSubdomain("");
@@ -62,13 +83,13 @@ export default function Servers() {
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this instance?")) {
-      await deleteDoc(doc(db, "servers", id));
+      await supabase.from("servers").delete().eq("id", id);
     }
   };
 
   const toggleStatus = async (bot: any) => {
     const newStatus = bot.status === 'running' ? 'stopped' : 'running';
-    await updateDoc(doc(db, "servers", bot.id), { status: newStatus });
+    await supabase.from("servers").update({ status: newStatus }).eq("id", bot.id);
   };
 
   return (
@@ -116,9 +137,9 @@ export default function Servers() {
                     <h3 className="font-medium text-sm group-hover:text-blue-500 transition-colors">{bot.name}</h3>
                     <div className="text-[10px] font-mono text-[#636366] flex flex-col mt-1">
                       <div className="flex items-center gap-1.5 ">
-                        <span className="uppercase tracking-wider px-1 bg-[#1A1A1B] rounded text-[8px]">{bot.dockerImage}</span>
+                        <span className="uppercase tracking-wider px-1 bg-[#1A1A1B] rounded text-[8px]">{bot.docker_image}</span>
                         <span>•</span>
-                        <span>{nodes.find(n => n.id === bot.nodeId)?.name || 'Unknown Node'}</span>
+                        <span>{nodes.find(n => n.id === bot.node_id)?.name || 'Unknown Node'}</span>
                       </div>
                       {bot.subdomain && (
                         <div className="flex items-center gap-1 mt-0.5 text-blue-400">
@@ -140,8 +161,8 @@ export default function Servers() {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <Metric label="CPU" value={`${bot.cpuUsage || 0}%`} />
-                <Metric label="RAM" value={`${bot.memoryUsage || 0}MB`} />
+                <Metric label="CPU" value={`${bot.cpu_usage || 0}%`} />
+                <Metric label="RAM" value={`${bot.memory_usage || 0}MB`} />
               </div>
             </div>
 
@@ -270,5 +291,3 @@ function ActionButton({ icon: Icon, label, color, onClick }: { icon: any, label:
     </button>
   );
 }
-
-import { PlusCircle } from "lucide-react";

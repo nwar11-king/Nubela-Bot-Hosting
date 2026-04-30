@@ -1,21 +1,20 @@
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
-import { db } from "./firebase";
+import { supabase } from "./supabase";
 import { useState, useEffect } from "react";
 
 export interface PanelSettings {
-  panelName: string;
-  logoUrl: string;
-  primaryColor: string;
-  allowSignups: boolean;
-  footerText: string;
+  panel_name: string;
+  logo_url: string;
+  primary_color: string;
+  allow_signups: boolean;
+  footer_text: string;
 }
 
 const DEFAULT_SETTINGS: PanelSettings = {
-  panelName: "Nebula Control Panel",
-  logoUrl: "",
-  primaryColor: "#2563eb",
-  allowSignups: true,
-  footerText: "Secure Handshake Required • Edge-Authenticated SSL"
+  panel_name: "Nebula Control Panel",
+  logo_url: "",
+  primary_color: "#2563eb",
+  allow_signups: true,
+  footer_text: "Secure Handshake Required • Edge-Authenticated SSL"
 };
 
 export function usePanelSettings() {
@@ -23,18 +22,46 @@ export function usePanelSettings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "global"), (snap) => {
-      if (snap.exists()) {
-        setSettings({ ...DEFAULT_SETTINGS, ...snap.data() } as PanelSettings);
+    // Initial fetch
+    const fetchSettings = async () => {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("*")
+        .eq("id", "global")
+        .single();
+      
+      if (data && !error) {
+        setSettings({ ...DEFAULT_SETTINGS, ...data });
       }
       setLoading(false);
-    });
-    return unsub;
+    };
+
+    fetchSettings();
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel("settings-changes")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "settings", filter: "id=eq.global" },
+        (payload) => {
+          setSettings(prev => ({ ...prev, ...payload.new }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return { settings, loading };
 }
 
 export async function updatePanelSettings(newSettings: Partial<PanelSettings>) {
-  await setDoc(doc(db, "settings", "global"), newSettings, { merge: true });
+  const { error } = await supabase
+    .from("settings")
+    .upsert({ id: "global", ...newSettings });
+  
+  if (error) throw error;
 }

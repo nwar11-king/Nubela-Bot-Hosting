@@ -9,6 +9,7 @@ import {
   CheckCircle2, XCircle, AlertCircle
 } from "lucide-react";
 import { motion } from "motion/react";
+import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
 
 const data = [
@@ -22,6 +23,27 @@ const data = [
 ];
 
 export default function Dashboard() {
+  const [stats, setStats] = useState({
+    nodes: 0,
+    servers: 0,
+    loading: true
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      const { count: nodeCount } = await supabase.from("nodes").select("*", { count: "exact", head: true });
+      const { count: serverCount } = await supabase.from("servers").select("*", { count: "exact", head: true });
+      
+      setStats({
+        nodes: nodeCount || 0,
+        servers: serverCount || 0,
+        loading: false
+      });
+    };
+
+    fetchStats();
+  }, []);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <header className="flex justify-between items-end">
@@ -30,7 +52,7 @@ export default function Dashboard() {
           <p className="text-sm text-[#636366] font-mono mt-1 uppercase tracking-widest">Global Status: Optimal</p>
         </div>
         <div className="flex gap-4">
-          <StatMini icon={CheckCircle2} label="Nodes Online" value="12/12" color="text-green-500" />
+          <StatMini icon={CheckCircle2} label="Nodes Online" value={`${stats.nodes}/${stats.nodes}`} color="text-green-500" />
           <StatMini icon={AlertCircle} label="Active Alerts" value="0" color="text-zinc-500" />
         </div>
       </header>
@@ -38,7 +60,7 @@ export default function Dashboard() {
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Bots", value: "2,481", sub: "+12 today", icon: Server },
+          { label: "Total Bots", value: stats.servers.toLocaleString(), sub: "+0 today", icon: Server },
           { label: "CPU Usage", value: "42.1%", sub: "Avg across fleet", icon: Cpu },
           { label: "RAM Usage", value: "64.8GB", sub: "of 128GB total", icon: Database },
           { label: "Network", value: "24.5 GB/s", sub: "Peak throughput", icon: Globe },

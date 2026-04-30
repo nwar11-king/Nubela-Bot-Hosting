@@ -4,8 +4,7 @@ import {
   Check, Info, Shield, RefreshCw, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { collection, query, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
 
 export default function Nodes() {
@@ -16,11 +15,28 @@ export default function Nodes() {
   const [nodeName, setNodeName] = useState("Main-VPS-1");
 
   useEffect(() => {
-    const q = query(collection(db, "nodes"));
-    return onSnapshot(q, (snap) => {
-      setNodes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchNodes = async () => {
+      const { data, error } = await supabase.from("nodes").select("*");
+      if (!error) setNodes(data || []);
       setLoading(false);
-    });
+    };
+
+    fetchNodes();
+
+    const channel = supabase
+      .channel("nodes-all")
+      .on("postgres_changes", { event: "*", schema: "public", table: "nodes" }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          setNodes(prev => [...prev, payload.new]);
+        } else if (payload.eventType === "UPDATE") {
+          setNodes(prev => prev.map(n => n.id === payload.new.id ? payload.new : n));
+        } else if (payload.eventType === "DELETE") {
+          setNodes(prev => prev.filter(n => n.id === payload.old.id));
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const apiKey = "ne_live_" + Math.random().toString(36).substring(7);

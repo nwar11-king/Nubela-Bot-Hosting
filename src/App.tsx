@@ -11,18 +11,24 @@ import Nodes from "./pages/Nodes";
 import Servers from "./pages/Servers";
 import Auth from "./pages/Auth";
 import Settings from "./pages/Settings";
-import { auth } from "./lib/firebase";
+import { supabase } from "./lib/supabase";
 import { usePanelSettings } from "./lib/settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [user, setUser] = useState<any>(null);
+  const [session, setSession] = useState<any>(null);
   const { settings, loading: settingsLoading } = usePanelSettings();
 
   useEffect(() => {
-    return auth.onAuthStateChanged((u) => {
-      setUser(u);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
     });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (settingsLoading) {
@@ -33,9 +39,11 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!session) {
     return <Auth />;
   }
+
+  const user = session.user;
 
   const renderContent = () => {
     switch (activeTab) {
@@ -52,14 +60,14 @@ export default function App() {
       {/* Sidebar */}
       <aside className="w-64 border-r border-[#1A1A1B] flex flex-col fixed inset-y-0 z-20 bg-[#0D0D0E]">
         <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded flex items-center justify-center overflow-hidden shrink-0" style={{ backgroundColor: settings.primaryColor }}>
-            {settings.logoUrl ? (
-              <img src={settings.logoUrl} className="w-full h-full object-cover" alt="Logo" />
+          <div className="w-8 h-8 rounded flex items-center justify-center overflow-hidden shrink-0" style={{ backgroundColor: settings.primary_color }}>
+            {settings.logo_url ? (
+              <img src={settings.logo_url} className="w-full h-full object-cover" alt="Logo" />
             ) : (
               <ShieldCheck className="text-white w-5 h-5" />
             )}
           </div>
-          <span className="font-medium tracking-tight text-lg truncate">{settings.panelName.split(' ')[0]}</span>
+          <span className="font-medium tracking-tight text-lg truncate">{settings.panel_name?.split(' ')[0]}</span>
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1">
@@ -103,7 +111,7 @@ export default function App() {
               <div className="text-xs font-medium truncate">{user.email?.split('@')[0]}</div>
               <div className="text-[10px] text-[#636366] truncate">{user.email}</div>
             </div>
-            <button onClick={() => auth.signOut()} className="text-[#636366] hover:text-white transition-colors">
+            <button onClick={() => supabase.auth.signOut()} className="text-[#636366] hover:text-white transition-colors">
               <LogOut className="w-4 h-4" />
             </button>
           </div>

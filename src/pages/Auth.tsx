@@ -4,12 +4,7 @@ import {
   Lock, AlertCircle, Loader2 
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  signInWithPopup, GoogleAuthProvider, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword 
-} from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { usePanelSettings } from "../lib/settings";
 
 export default function Auth() {
@@ -25,8 +20,10 @@ export default function Auth() {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+      });
+      if (error) throw error;
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -40,9 +37,12 @@ export default function Auth() {
     setError("");
     try {
       if (mode === "signup") {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        alert("Verification email sent!");
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       }
     } catch (err: any) {
       setError(err.message);
@@ -67,15 +67,15 @@ export default function Auth() {
         <div className="flex flex-col items-center mb-8">
           <div 
             className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 shadow-lg overflow-hidden"
-            style={{ backgroundColor: settings.primaryColor }}
+            style={{ backgroundColor: settings.primary_color }}
           >
-            {settings.logoUrl ? (
-              <img src={settings.logoUrl} className="w-full h-full object-cover" alt="Logo" />
+            {settings.logo_url ? (
+              <img src={settings.logo_url} className="w-full h-full object-cover" alt="Logo" />
             ) : (
               <ShieldCheck className="text-white w-7 h-7" />
             )}
           </div>
-          <h1 className="text-2xl font-medium tracking-tight text-center">{settings.panelName}</h1>
+          <h1 className="text-2xl font-medium tracking-tight text-center">{settings.panel_name}</h1>
           <p className="text-xs text-[#636366] font-mono mt-1 uppercase tracking-widest text-center">Protocol-Level Access</p>
         </div>
 
@@ -149,7 +149,7 @@ export default function Auth() {
             onClick={handleGoogleAuth}
             className="flex items-center justify-center gap-2 border border-[#242426] hover:bg-[#1A1A1B] py-2.5 rounded-xl text-sm transition-colors"
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/btn_google_light_normal.svg" className="w-4 h-4" alt="Google" />
+            <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" className="w-4 h-4" alt="Google" />
             <span>Google</span>
           </button>
           <button className="flex items-center justify-center gap-2 border border-[#242426] hover:bg-[#1A1A1B] py-2.5 rounded-xl text-sm transition-colors text-[#636366]">
@@ -170,7 +170,7 @@ export default function Auth() {
       </motion.div>
 
       <footer className="mt-12 text-[10px] font-mono text-[#444] uppercase tracking-[0.2em] relative z-10">
-        {settings.footerText}
+        {settings.footer_text}
       </footer>
     </div>
   );

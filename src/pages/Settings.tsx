@@ -66,8 +66,8 @@ export default function Settings() {
               <label className="text-[10px] font-mono uppercase text-[#636366] tracking-widest">Panel Name</label>
               <input 
                 type="text" 
-                value={settings.panelName}
-                onChange={(e) => setSettings({ ...settings, panelName: e.target.value })}
+                value={settings.panel_name}
+                onChange={(e) => setSettings({ ...settings, panel_name: e.target.value })}
                 className="w-full bg-[#1A1A1B] border border-[#242426] rounded-lg px-4 py-2 text-sm focus:border-blue-500 outline-none transition-colors"
                 placeholder="Nebula Control Panel"
               />
@@ -77,12 +77,12 @@ export default function Settings() {
               <div className="flex gap-2">
                 <input 
                   type="text" 
-                  value={settings.primaryColor}
-                  onChange={(e) => setSettings({ ...settings, primaryColor: e.target.value })}
+                  value={settings.primary_color}
+                  onChange={(e) => setSettings({ ...settings, primary_color: e.target.value })}
                   className="flex-1 bg-[#1A1A1B] border border-[#242426] rounded-lg px-4 py-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono"
                   placeholder="#2563eb"
                 />
-                <div className="w-10 h-10 rounded-lg border border-[#242426]" style={{ backgroundColor: settings.primaryColor }} />
+                <div className="w-10 h-10 rounded-lg border border-[#242426]" style={{ backgroundColor: settings.primary_color }} />
               </div>
             </div>
             <div className="md:col-span-2 space-y-2">
@@ -90,13 +90,13 @@ export default function Settings() {
               <div className="flex gap-4">
                 <input 
                   type="text" 
-                  value={settings.logoUrl}
-                  onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })}
+                  value={settings.logo_url}
+                  onChange={(e) => setSettings({ ...settings, logo_url: e.target.value })}
                   className="flex-1 bg-[#1A1A1B] border border-[#242426] rounded-lg px-4 py-2 text-sm focus:border-blue-500 outline-none transition-colors"
                   placeholder="https://example.com/logo.png"
                 />
                 <div className="w-10 h-10 bg-[#1A1A1B] border border-[#242426] rounded-lg flex items-center justify-center overflow-hidden">
-                  {settings.logoUrl ? <img src={settings.logoUrl} className="w-full h-full object-contain" alt="Logo preview" /> : <ImageIcon className="w-4 h-4 text-[#636366]" />}
+                  {settings.logo_url ? <img src={settings.logo_url} className="w-full h-full object-contain" alt="Logo preview" /> : <ImageIcon className="w-4 h-4 text-[#636366]" />}
                 </div>
               </div>
             </div>
@@ -117,15 +117,15 @@ export default function Settings() {
             </div>
             <button 
               type="button"
-              onClick={() => setSettings({ ...settings, allowSignups: !settings.allowSignups })}
+              onClick={() => setSettings({ ...settings, allow_signups: !settings.allow_signups })}
               className={cn(
                 "w-12 h-6 rounded-full transition-colors relative",
-                settings.allowSignups ? "bg-blue-600" : "bg-zinc-800"
+                settings.allow_signups ? "bg-blue-600" : "bg-zinc-800"
               )}
             >
               <div className={cn(
                 "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                settings.allowSignups ? "left-7" : "left-1"
+                settings.allow_signups ? "left-7" : "left-1"
               )} />
             </button>
           </div>
@@ -134,8 +134,8 @@ export default function Settings() {
             <label className="text-[10px] font-mono uppercase text-[#636366] tracking-widest">Footer Text (Customizable)</label>
             <input 
               type="text" 
-              value={settings.footerText}
-              onChange={(e) => setSettings({ ...settings, footerText: e.target.value })}
+              value={settings.footer_text}
+              onChange={(e) => setSettings({ ...settings, footer_text: e.target.value })}
               className="w-full bg-[#1A1A1B] border border-[#242426] rounded-lg px-4 py-2 text-sm focus:border-blue-500 outline-none transition-colors"
               placeholder="All rights reserved..."
             />
