@@ -40,8 +40,9 @@ export default function Servers() {
 
     fetchData();
 
+    const channelId = `servers-${Math.random().toString(36).substring(7)}`;
     const channel = supabase
-      .channel("servers-user")
+      .channel(channelId)
       .on("postgres_changes", { event: "*", schema: "public", table: "servers" }, (payload) => {
         if (payload.eventType === "INSERT") {
           setBots(prev => [...prev, payload.new]);

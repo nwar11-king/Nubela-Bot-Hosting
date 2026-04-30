@@ -23,8 +23,9 @@ export default function Nodes() {
 
     fetchNodes();
 
+    const channelId = `nodes-${Math.random().toString(36).substring(7)}`;
     const channel = supabase
-      .channel("nodes-all")
+      .channel(channelId)
       .on("postgres_changes", { event: "*", schema: "public", table: "nodes" }, (payload) => {
         if (payload.eventType === "INSERT") {
           setNodes(prev => [...prev, payload.new]);

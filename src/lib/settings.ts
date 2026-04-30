@@ -39,13 +39,14 @@ export function usePanelSettings() {
     fetchSettings();
 
     // Subscribe to changes
+    const channelId = `settings-${Math.random().toString(36).substring(7)}`;
     const channel = supabase
-      .channel("settings-changes")
+      .channel(channelId)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "settings", filter: "id=eq.global" },
         (payload) => {
-          setSettings(prev => ({ ...prev, ...payload.new }));
+          setSettings(prev => prev ? ({ ...prev, ...payload.new }) : payload.new as PanelSettings);
         }
       )
       .subscribe();
