@@ -2,6 +2,9 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 
+// Safeguard against ReferenceErrors in shell script templates
+const RED = "", GREEN = "", YELLOW = "", BLUE = "", CYAN = "", NC = "", HAS_SYSTEMD = "";
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -12,7 +15,7 @@ async function startServer() {
   const getInstallerScript = () => {
     return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Ultra-Fast Installer
-# Version: 1.9.7
+# Version: 1.9.9
 
 # Colors
 RED='\\x1b[0;31m'
@@ -75,8 +78,8 @@ echo -e "\${GREEN}
 \${NC}"
 
 echo -e "\${BLUE}==============================================\${NC}"
-echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.7)       \${NC}"
-echo -e "       Init System: $([ "$HAS_SYSTEMD" = true ] && echo "systemd" || echo "non-systemd")${NC}"
+echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.9)       \${NC}"
+echo -e "       Init System: \$([ "\$HAS_SYSTEMD" = true ] && echo "systemd" || echo "non-systemd")\${NC}"
 echo -e "\${BLUE}==============================================\${NC}"
 
 echo "1) Full Panel Deployment (Real)"
@@ -200,21 +203,21 @@ EOF
         fi
 
         # Persistence & Startup
-        if [ "$HAS_SYSTEMD" = true ]; then
-            echo -e "${BLUE}⚙️ Configuring Systemd Service...${NC}"
+        if [ "\$HAS_SYSTEMD" = true ]; then
+            echo -e "\${BLUE}⚙️ Configuring Systemd Service...\${NC}"
         else
-            echo -e "${BLUE}⚙️ Configuring Process Manager...${NC}"
+            echo -e "\${BLUE}⚙️ Configuring Process Manager...\${NC}"
         fi
         
         # Detect absolute path of npm
-        NPM_PATH=$(command -v npm)
-        if [ -z "$NPM_PATH" ]; then NPM_PATH="/usr/bin/npm"; fi
+        NPM_PATH=\$(command -v npm)
+        if [ -z "\$NPM_PATH" ]; then NPM_PATH="/usr/bin/npm"; fi
 
         # Ensure correct permissions
         chown -R root:root /var/www/nebula
         chmod -R 755 /var/www/nebula
 
-        if [ "$HAS_SYSTEMD" = true ]; then
+        if [ "\$HAS_SYSTEMD" = true ]; then
             cat <<EOF > /etc/systemd/system/nebula.service
 [Unit]
 Description=Nebula Panel
@@ -224,7 +227,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/var/www/nebula
-ExecStart=$NPM_PATH start
+ExecStart=\$NPM_PATH start
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
@@ -232,16 +235,16 @@ Environment=NODE_ENV=production
 [Install]
 WantedBy=multi-user.target
 EOF
-            echo -e "${YELLOW}🚀 Starting Nebula Panel via Systemd...${NC}"
+            echo -e "\${YELLOW}🚀 Starting Nebula Panel via Systemd...\${NC}"
             systemctl daemon-reload
             systemctl stop nebula >/dev/null 2>&1
             systemctl enable nebula --now >/dev/null 2>&1
         elif command -v pm2 &> /dev/null; then
-            echo -e "${YELLOW}🚀 Starting Nebula Panel via PM2...${NC}"
+            echo -e "\${YELLOW}🚀 Starting Nebula Panel via PM2...\${NC}"
             cd /var/www/nebula && pm2 start npm --name "nebula" -- start >/dev/null 2>&1
             pm2 save >/dev/null 2>&1
         else
-            echo -e "${YELLOW}⚠️ No advanced process manager found. Running via nohup...${NC}"
+            echo -e "\${YELLOW}⚠️ No advanced process manager found. Running via nohup...\${NC}"
             cd /var/www/nebula && nohup npm start > panel.log 2>&1 &
         fi
 
@@ -267,16 +270,16 @@ EOF
         echo -e "URL: \${YELLOW}\$W_PROTO://\$DOMAIN\${NC}"
         echo -e "Server IP: \${YELLOW}\$SERVER_IP\${NC}"
         echo -e "\${BLUE}==============================================\${NC}"
-        echo -e "${GREEN}Management Info:${NC}"
-        if [ "$HAS_SYSTEMD" = true ]; then
-            echo -e "Logs: ${CYAN}journalctl -u nebula -f${NC}"
-            echo -e "Status: ${CYAN}systemctl status nebula${NC}"
+        echo -e "\${GREEN}Management Info:\${NC}"
+        if [ "\$HAS_SYSTEMD" = true ]; then
+            echo -e "Logs: \${CYAN}journalctl -u nebula -f\${NC}"
+            echo -e "Status: \${CYAN}systemctl status nebula\${NC}"
         elif command -v pm2 &> /dev/null; then
-            echo -e "Logs: ${CYAN}pm2 logs nebula${NC}"
-            echo -e "Status: ${CYAN}pm2 status${NC}"
+            echo -e "Logs: \${CYAN}pm2 logs nebula\${NC}"
+            echo -e "Status: \${CYAN}pm2 status\${NC}"
         else
-            echo -e "Logs: ${CYAN}tail -f /var/www/nebula/panel.log${NC}"
-            echo -e "Note: Process is running in background (nohup).${NC}"
+            echo -e "Logs: \${CYAN}tail -f /var/www/nebula/panel.log\${NC}"
+            echo -e "Note: Process is running in background (nohup).\${NC}"
         fi
         echo -e "\${BLUE}==============================================\${NC}"
         read -p "Press Enter to return to menu." < /dev/tty
@@ -321,7 +324,7 @@ done
   });
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "1.9.7" });
+    res.json({ status: "ok", version: "1.9.9" });
   });
 
   // Serve static UI
@@ -335,7 +338,7 @@ done
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log("Nebula 1.8.0 running on :" + PORT);
+    console.log("Nebula 1.9.9 running on :" + PORT);
   });
 }
 
