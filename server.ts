@@ -12,7 +12,7 @@ async function startServer() {
   const getInstallerScript = () => {
     return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Ultra-Fast Installer
-# Version: 1.9.0
+# Version: 1.9.5
 
 # Colors
 RED='\\x1b[0;31m'
@@ -65,7 +65,7 @@ echo -e "\${GREEN}
 \${NC}"
 
 echo -e "\${BLUE}==============================================\${NC}"
-echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.0)       \${NC}"
+echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.5)       \${NC}"
 echo -e "\${BLUE}==============================================\${NC}"
 
 echo "1) Full Panel Deployment (Real)"
@@ -114,12 +114,27 @@ case \$MODE in
 server {
     listen 80;
     server_name \$DOMAIN;
+    
+    # Fast proxy headers
+    proxy_buffer_size          128k;
+    proxy_buffers              4 256k;
+    proxy_busy_buffers_size    256k;
+
     location / {
         proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \\\$http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host \\\$host;
+        proxy_cache_bypass \\\$http_upgrade;
         proxy_set_header X-Real-IP \\\$remote_addr;
         proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \\\$scheme;
+        
+        # Prevent "Waiting Header" timeouts
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
     }
 }
 EOF
@@ -149,27 +164,57 @@ EOF
         fi
 
         # Persistence & Startup
-        echo -e "\${BLUE}⚙️ Starting Nebula Service...\${NC}"
+        echo -e "\${BLUE}⚙️ Configuring Systemd Service...\${NC}"
+        
+        # Detect absolute path of npm
+        NPM_PATH=\$(command -v npm)
+        if [ -z "\$NPM_PATH" ]; then NPM_PATH="/usr/bin/npm"; fi
+
+        # Ensure correct permissions
+        chown -R root:root /var/www/nebula
+        chmod -R 755 /var/www/nebula
+
         cat <<EOF > /etc/systemd/system/nebula.service
 [Unit]
 Description=Nebula Panel
 After=network.target
 
 [Service]
+Type=simple
+User=root
 WorkingDirectory=/var/www/nebula
-ExecStart=/usr/bin/npm start
+ExecStart=\$NPM_PATH start
 Restart=always
+RestartSec=5
 Environment=NODE_ENV=production
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+        echo -e "\${YELLOW}🚀 Starting Nebula Panel...\${NC}"
         systemctl daemon-reload
+        systemctl stop nebula >/dev/null 2>&1
         systemctl enable nebula --now >/dev/null 2>&1
+
+        # Final Verification
+        echo -e "\${YELLOW}🔍 Verifying deployment (checking port 3000)...\${NC}"
+        # Give it a bit more time for initial start
+        sleep 5
+        READY=false
+        if command -v lsof &> /dev/null; then
+            if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null ; then
+                READY=true
+            fi
+        fi
 
         # Summary Screen
         clear
-        echo -e "\${GREEN}🚀 DEPLOYMENT 100% COMPLETE!\${NC}"
+        if [ "\$READY" = true ]; then
+            echo -e "\${GREEN}🚀 DEPLOYMENT 100% SUCCESSFUL!\${NC}"
+        else
+            echo -e "\${YELLOW}⚠️  SERVICE REGISTERED. (Waiting for port 3000)...\${NC}"
+        fi
         echo -e "\${BLUE}==============================================\${NC}"
         echo -e "URL: \${YELLOW}\$W_PROTO://\$DOMAIN\${NC}"
         echo -e "Server IP: \${YELLOW}\$SERVER_IP\${NC}"
@@ -224,7 +269,7 @@ done
   });
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "1.9.0" });
+    res.json({ status: "ok", version: "1.9.5" });
   });
 
   // Serve static UI
