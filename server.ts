@@ -12,13 +12,14 @@ async function startServer() {
   const getInstallerScript = () => {
     return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Ultra-Fast Installer
-# Version: 1.9.5
+# Version: 1.9.7
 
 # Colors
 RED='\\x1b[0;31m'
 GREEN='\\x1b[0;32m'
 YELLOW='\\x1b[1;33m'
 BLUE='\\x1b[0;34m'
+CYAN='\\x1b[0;36m'
 NC='\\x1b[0m'
 
 # Root Check
@@ -34,7 +35,7 @@ export DEBIAN_FRONTEND=noninteractive
 UPDATED=false
 update_apt() {
     if [ "$UPDATED" = false ]; then
-        echo -e "\${BLUE}🔄 Syncing repositories...\${NC}"
+        echo -e "\${BLUE}🔄 Syncing repositories (Turbo Mode)...\${NC}"
         apt-get update -y -qq >/dev/null 2>&1
         UPDATED=true
     fi
@@ -49,10 +50,19 @@ install_pkg() {
     done
     if [ \${#pkgs[@]} -gt 0 ]; then
         update_apt
-        echo -e "\${YELLOW}⚡ Adding: \${pkgs[*]}...\${NC}"
+        echo -e "\${YELLOW}⚡ Installing dependencies: \${pkgs[*]}...\${NC}"
         apt-get install -y -qq --no-install-recommends "\${pkgs[@]}" >/dev/null 2>&1
     fi
 }
+
+# Advanced Init Detection
+HAS_SYSTEMD=false
+# Check if systemd is truly active (PID 1)
+if [ -d /run/systemd/system ] || [ "$(ps -p 1 -o comm= 2>/dev/null)" = "systemd" ]; then
+    if command -v systemctl &> /dev/null; then
+        HAS_SYSTEMD=true
+    fi
+fi
 
 while true; do
 clear
@@ -65,7 +75,8 @@ echo -e "\${GREEN}
 \${NC}"
 
 echo -e "\${BLUE}==============================================\${NC}"
-echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.5)       \${NC}"
+echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.7)       \${NC}"
+echo -e "       Init System: $([ "$HAS_SYSTEMD" = true ] && echo "systemd" || echo "non-systemd")${NC}"
 echo -e "\${BLUE}==============================================\${NC}"
 
 echo "1) Full Panel Deployment (Real)"
@@ -80,9 +91,21 @@ case \$MODE in
         read -p "Your Domain (e.g. panel.example.com): " DOMAIN < /dev/tty
         read -p "Web Option: [1] Nginx [2] Cloudflare Tunnel: " WEB_CONF < /dev/tty
 
-        echo -e "\${YELLOW}--- Turbo Setup Active ---\${NC}"
+        echo -e "\${YELLOW}--- Environment Preparation ---\${NC}"
         
-        # Immediate essential fetch
+        # RAM Check
+        TOTAL_RAM=\$(free -m | awk '/^Mem:/{print \$2}')
+        if [ "\$TOTAL_RAM" -lt 1024 ]; then
+            echo -e "\${RED}⚠️ LOW RAM DETECTED (\$TOTAL_RAM MB).\${NC}"
+            echo -e "\${YELLOW}Panel installation might hang during npm install.\${NC}"
+            read -p "Create 2GB Swap file for stability? (y/n): " SWAP_YN < /dev/tty
+            if [ "\$SWAP_YN" == "y" ]; then
+                fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+                echo "/swapfile none swap sw 0 0" >> /etc/fstab
+                echo -e "\${GREEN}✅ Swap file active.\${NC}"
+            fi
+        fi
+
         install_pkg curl wget git build-essential nginx certbot python3-certbot-nginx
 
         # Node.js 20 check
@@ -95,17 +118,23 @@ case \$MODE in
         # Get Server IP
         SERVER_IP=\$(curl -s https://ident.me || curl -s https://ifconfig.me)
 
-        # File setup
+        echo -e "\${BLUE}📥 Deploying Panel Files...\${NC}"
         mkdir -p /var/www/nebula
         cd /var/www/nebula
+        
+        # Robust Clone
         if [ ! -d ".git" ]; then
-            echo -e "\${BLUE}📥 Pulling panel code...\${NC}"
-            git clone --quiet --depth 1 https://github.com/NebulaHosting/Panel.git . 2>/dev/null
+            git clone --quiet --depth 1 https://github.com/NebulaHosting/Panel.git . || {
+                echo -e "\${RED}❌ Git clone failed! Check internet connection.\${NC}"
+                read -p "Press Enter to exit." < /dev/tty
+                continue
+            }
         fi
 
-        # Install Dependencies
-        echo -e "\${YELLOW}📦 Installing app dependencies...\${NC}"
-        npm install --production --quiet >/dev/null 2>&1
+        echo -e "\${YELLOW}📦 Fetching dependencies (npm install)...\${NC}"
+        npm install --production --no-audit --no-fund >/dev/null 2>&1 || {
+            echo -e "\${RED}❌ npm install failed. System might be out of RAM.\${NC}"
+        }
 
         # Nginx Config
         if [ "\$WEB_CONF" == "1" ]; then
@@ -131,16 +160,19 @@ server {
         proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \\\$scheme;
         
-        # Prevent "Waiting Header" timeouts
-        proxy_read_timeout 300;
-        proxy_connect_timeout 300;
-        proxy_send_timeout 300;
+        proxy_read_timeout 600;
+        proxy_connect_timeout 600;
+        proxy_send_timeout 600;
     }
 }
 EOF
             ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
             rm -f /etc/nginx/sites-enabled/default
-            nginx -t >/dev/null 2>&1 && systemctl restart nginx
+            if [ "\$HAS_SYSTEMD" = true ]; then
+                nginx -t >/dev/null 2>&1 && systemctl restart nginx
+            else
+                service nginx restart
+            fi
             
             read -p "Apply SSL now? (y/n): " SSL_YN < /dev/tty
             if [ "\$SSL_YN" == "y" ]; then
@@ -157,24 +189,33 @@ EOF
                     curl -sL --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
                     dpkg -i /tmp/cloudflared.deb >/dev/null 2>&1
                 fi
-                cloudflared service install "\$CF_TOKEN" >/dev/null 2>&1 && systemctl start cloudflared
+                if [ "\$HAS_SYSTEMD" = true ]; then
+                    cloudflared service install "\$CF_TOKEN" >/dev/null 2>&1 && systemctl start cloudflared
+                else
+                    cloudflared tunnel run --token "\$CF_TOKEN" &
+                fi
                 echo -e "\${GREEN}✅ Cloudflare Tunnel is now Active.\${NC}"
             fi
             W_PROTO="https" # Tunnels are usually HTTPS on the edge
         fi
 
         # Persistence & Startup
-        echo -e "\${BLUE}⚙️ Configuring Systemd Service...\${NC}"
+        if [ "$HAS_SYSTEMD" = true ]; then
+            echo -e "${BLUE}⚙️ Configuring Systemd Service...${NC}"
+        else
+            echo -e "${BLUE}⚙️ Configuring Process Manager...${NC}"
+        fi
         
         # Detect absolute path of npm
-        NPM_PATH=\$(command -v npm)
-        if [ -z "\$NPM_PATH" ]; then NPM_PATH="/usr/bin/npm"; fi
+        NPM_PATH=$(command -v npm)
+        if [ -z "$NPM_PATH" ]; then NPM_PATH="/usr/bin/npm"; fi
 
         # Ensure correct permissions
         chown -R root:root /var/www/nebula
         chmod -R 755 /var/www/nebula
 
-        cat <<EOF > /etc/systemd/system/nebula.service
+        if [ "$HAS_SYSTEMD" = true ]; then
+            cat <<EOF > /etc/systemd/system/nebula.service
 [Unit]
 Description=Nebula Panel
 After=network.target
@@ -183,7 +224,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/var/www/nebula
-ExecStart=\$NPM_PATH start
+ExecStart=$NPM_PATH start
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
@@ -191,11 +232,18 @@ Environment=NODE_ENV=production
 [Install]
 WantedBy=multi-user.target
 EOF
-
-        echo -e "\${YELLOW}🚀 Starting Nebula Panel...\${NC}"
-        systemctl daemon-reload
-        systemctl stop nebula >/dev/null 2>&1
-        systemctl enable nebula --now >/dev/null 2>&1
+            echo -e "${YELLOW}🚀 Starting Nebula Panel via Systemd...${NC}"
+            systemctl daemon-reload
+            systemctl stop nebula >/dev/null 2>&1
+            systemctl enable nebula --now >/dev/null 2>&1
+        elif command -v pm2 &> /dev/null; then
+            echo -e "${YELLOW}🚀 Starting Nebula Panel via PM2...${NC}"
+            cd /var/www/nebula && pm2 start npm --name "nebula" -- start >/dev/null 2>&1
+            pm2 save >/dev/null 2>&1
+        else
+            echo -e "${YELLOW}⚠️ No advanced process manager found. Running via nohup...${NC}"
+            cd /var/www/nebula && nohup npm start > panel.log 2>&1 &
+        fi
 
         # Final Verification
         echo -e "\${YELLOW}🔍 Verifying deployment (checking port 3000)...\${NC}"
@@ -213,21 +261,23 @@ EOF
         if [ "\$READY" = true ]; then
             echo -e "\${GREEN}🚀 DEPLOYMENT 100% SUCCESSFUL!\${NC}"
         else
-            echo -e "\${YELLOW}⚠️  SERVICE REGISTERED. (Waiting for port 3000)...\${NC}"
+            echo -e "\${YELLOW}⚠️ SERVICE REGISTERED. (Waiting for port 3000)...\${NC}"
         fi
         echo -e "\${BLUE}==============================================\${NC}"
         echo -e "URL: \${YELLOW}\$W_PROTO://\$DOMAIN\${NC}"
         echo -e "Server IP: \${YELLOW}\$SERVER_IP\${NC}"
         echo -e "\${BLUE}==============================================\${NC}"
-        echo -e "\${GREEN}Next Steps:\${NC}"
-        if [ "\$WEB_CONF" == "1" ]; then
-            echo -e "1. Ensure DNS A Record for \${YELLOW}\$DOMAIN\${NC} points to \${YELLOW}\$SERVER_IP\${NC}"
+        echo -e "${GREEN}Management Info:${NC}"
+        if [ "$HAS_SYSTEMD" = true ]; then
+            echo -e "Logs: ${CYAN}journalctl -u nebula -f${NC}"
+            echo -e "Status: ${CYAN}systemctl status nebula${NC}"
+        elif command -v pm2 &> /dev/null; then
+            echo -e "Logs: ${CYAN}pm2 logs nebula${NC}"
+            echo -e "Status: ${CYAN}pm2 status${NC}"
         else
-            echo -e "1. In Cloudflare Dashboard, add Public Hostname:"
-            echo -e "   \${YELLOW}\$DOMAIN\${NC} -> \${YELLOW}http://localhost:3000\${NC}"
+            echo -e "Logs: ${CYAN}tail -f /var/www/nebula/panel.log${NC}"
+            echo -e "Note: Process is running in background (nohup).${NC}"
         fi
-        echo -e "2. Check service status: \${CYAN}systemctl status nebula\${NC}"
-        echo -e "3. View live logs: \${CYAN}journalctl -u nebula -f\${NC}"
         echo -e "\${BLUE}==============================================\${NC}"
         read -p "Press Enter to return to menu." < /dev/tty
         ;;
@@ -236,7 +286,9 @@ EOF
         if ! command -v docker &> /dev/null; then
             echo -e "\${BLUE}🐳 Deploying Docker Engine...\${NC}"
             curl -sSL https://get.docker.com | sh >/dev/null 2>&1
-            systemctl enable --now docker >/dev/null 2>&1
+            if [ "\$HAS_SYSTEMD" = true ]; then
+                systemctl enable --now docker >/dev/null 2>&1
+            fi
         fi
         echo -e "\${GREEN}✅ Node is ready to be linked.\${NC}"
         echo -e "Run nodes with Docker to ensure isolated environments."
@@ -246,7 +298,7 @@ EOF
         echo -e "\${BLUE}--- Server Specs ---\${NC}"
         echo -e "Public IP: \$(curl -s ident.me || echo 'Unknown')"
         free -h | awk '/^Mem:/ {print "RAM: "\$3"/"\$2}'
-        df -h / | awk 'NR==2 {print "Disk: "\$3"/"\$2}'
+        echo -e "Systemd Available: \$HAS_SYSTEMD"
         read -p "Press Enter." < /dev/tty
         ;;
     4)
@@ -269,7 +321,7 @@ done
   });
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "1.9.5" });
+    res.json({ status: "ok", version: "1.9.7" });
   });
 
   // Serve static UI
