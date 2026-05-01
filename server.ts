@@ -12,7 +12,7 @@ async function startServer() {
   const getInstallerScript = () => {
     return `#!/bin/bash
 # Nebula Hosting / BotHosting.site Ultra-Fast Installer
-# Version: 1.8.0
+# Version: 1.9.0
 
 # Colors
 RED='\\x1b[0;31m'
@@ -24,7 +24,7 @@ NC='\\x1b[0m'
 # Root Check
 if [ "$EUID" -ne 0 ]; then 
   echo -e "\${RED}❌ ERROR: Root access required.\${NC}"
-  echo -e "\${YELLOW}Use: curl -sSL https://get.bothosting.site | sudo bash\${NC}"
+  echo -e "\${YELLOW}Please switch to root user (su -) and run again.\${NC}"
   exit 1
 fi
 
@@ -65,7 +65,7 @@ echo -e "\${GREEN}
 \${NC}"
 
 echo -e "\${BLUE}==============================================\${NC}"
-echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.8.0)       \${NC}"
+echo -e "\${YELLOW}       NEBULA TURBO INSTALLER (v1.9.0)       \${NC}"
 echo -e "\${BLUE}==============================================\${NC}"
 
 echo "1) Full Panel Deployment (Real)"
@@ -77,7 +77,7 @@ read -p "Option [1-4]: " MODE < /dev/tty
 
 case \$MODE in
     1)
-        read -p "Your Domain: " DOMAIN < /dev/tty
+        read -p "Your Domain (e.g. panel.example.com): " DOMAIN < /dev/tty
         read -p "Web Option: [1] Nginx [2] Cloudflare Tunnel: " WEB_CONF < /dev/tty
 
         echo -e "\${YELLOW}--- Turbo Setup Active ---\${NC}"
@@ -103,6 +103,10 @@ case \$MODE in
             git clone --quiet --depth 1 https://github.com/NebulaHosting/Panel.git . 2>/dev/null
         fi
 
+        # Install Dependencies
+        echo -e "\${YELLOW}📦 Installing app dependencies...\${NC}"
+        npm install --production --quiet >/dev/null 2>&1
+
         # Nginx Config
         if [ "\$WEB_CONF" == "1" ]; then
             echo -e "\${BLUE}🌐 Setting up Nginx VHost...\${NC}"
@@ -122,19 +126,16 @@ EOF
             ln -sf /etc/nginx/sites-available/nebula.conf /etc/nginx/sites-enabled/
             rm -f /etc/nginx/sites-enabled/default
             nginx -t >/dev/null 2>&1 && systemctl restart nginx
-
-            echo -e "\${GREEN}✅ Nginx Configured.\${NC}"
-            echo -e "\${YELLOW}⚠️ DNS INSTRUCTIONS:\${NC}"
-            echo -e "   1. Go to your DNS provider (Cloudflare, Namecheap, etc.)"
-            echo -e "   2. Add an \${BLUE}A Record\${NC} for \${GREEN}\$DOMAIN\${NC}"
-            echo -e "   3. Point it to IP: \${GREEN}\$SERVER_IP\${NC}"
-            echo -e "   4. For Cloudflare: Use \${RED}DNS Only\${NC} first, then switch to Proxied after SSL."
             
             read -p "Apply SSL now? (y/n): " SSL_YN < /dev/tty
             if [ "\$SSL_YN" == "y" ]; then
                 certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m admin@\$DOMAIN --quiet
+                W_PROTO="https"
+            else
+                W_PROTO="http"
             fi
         elif [ "\$WEB_CONF" == "2" ]; then
+            echo -e "\${YELLOW}☁️ Cloudflare Tunnel Setup...\${NC}"
             read -p "Paste Your Tunnel Token: " CF_TOKEN < /dev/tty
             if [ -n "\$CF_TOKEN" ]; then
                 if ! command -v cloudflared &> /dev/null; then
@@ -144,9 +145,11 @@ EOF
                 cloudflared service install "\$CF_TOKEN" >/dev/null 2>&1 && systemctl start cloudflared
                 echo -e "\${GREEN}✅ Cloudflare Tunnel is now Active.\${NC}"
             fi
+            W_PROTO="https" # Tunnels are usually HTTPS on the edge
         fi
 
-        # Persistence
+        # Persistence & Startup
+        echo -e "\${BLUE}⚙️ Starting Nebula Service...\${NC}"
         cat <<EOF > /etc/systemd/system/nebula.service
 [Unit]
 Description=Nebula Panel
@@ -156,22 +159,42 @@ After=network.target
 WorkingDirectory=/var/www/nebula
 ExecStart=/usr/bin/npm start
 Restart=always
+Environment=NODE_ENV=production
 
 [Install]
 WantedBy=multi-user.target
 EOF
         systemctl daemon-reload
+        systemctl enable nebula --now >/dev/null 2>&1
+
+        # Summary Screen
+        clear
         echo -e "\${GREEN}🚀 DEPLOYMENT 100% COMPLETE!\${NC}"
-        echo -e "\${BLUE}Address: http://\$DOMAIN (\${SERVER_IP})\${NC}"
-        read -p "Press Enter to finish." < /dev/tty
+        echo -e "\${BLUE}==============================================\${NC}"
+        echo -e "URL: \${YELLOW}\$W_PROTO://\$DOMAIN\${NC}"
+        echo -e "Server IP: \${YELLOW}\$SERVER_IP\${NC}"
+        echo -e "\${BLUE}==============================================\${NC}"
+        echo -e "\${GREEN}Next Steps:\${NC}"
+        if [ "\$WEB_CONF" == "1" ]; then
+            echo -e "1. Ensure DNS A Record for \${YELLOW}\$DOMAIN\${NC} points to \${YELLOW}\$SERVER_IP\${NC}"
+        else
+            echo -e "1. In Cloudflare Dashboard, add Public Hostname:"
+            echo -e "   \${YELLOW}\$DOMAIN\${NC} -> \${YELLOW}http://localhost:3000\${NC}"
+        fi
+        echo -e "2. Check service status: \${CYAN}systemctl status nebula\${NC}"
+        echo -e "3. View live logs: \${CYAN}journalctl -u nebula -f\${NC}"
+        echo -e "\${BLUE}==============================================\${NC}"
+        read -p "Press Enter to return to menu." < /dev/tty
         ;;
     2)
         echo -e "\${YELLOW}--- Node Runner Setup ---\${NC}"
         if ! command -v docker &> /dev/null; then
             echo -e "\${BLUE}🐳 Deploying Docker Engine...\${NC}"
             curl -sSL https://get.docker.com | sh >/dev/null 2>&1
+            systemctl enable --now docker >/dev/null 2>&1
         fi
         echo -e "\${GREEN}✅ Node is ready to be linked.\${NC}"
+        echo -e "Run nodes with Docker to ensure isolated environments."
         read -p "Press Enter." < /dev/tty
         ;;
     3)
@@ -201,7 +224,7 @@ done
   });
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", version: "1.8.0" });
+    res.json({ status: "ok", version: "1.9.0" });
   });
 
   // Serve static UI

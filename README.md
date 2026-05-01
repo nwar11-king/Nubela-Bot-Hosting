@@ -10,16 +10,25 @@ Nebula is a modern, high-performance hosting control panel designed for Discord 
 
 ## 🚀 One-Line Installer
 
-Deploy your panel or a new compute node to any Ubuntu/Debian server using the official installer:
+Deploy your panel or a new compute node to any Ubuntu/Debian server using the official turbo installer:
 
 ```bash
 curl -sSL https://get.bothosting.site | bash
 ```
 
-### What it does:
-- **Panel Mode:** Installs the Web UI, Nginx Reverse Proxy, Auto-SSL (Certbot), and MySQL.
-- **Node Mode:** Installs Docker, Daemon, and bridges the server to your Panel via API key.
-- **Security:** Configures UFW and optional Cloudflare Tunnels for NAT-bypassing.
+### Post-Installation Commands
+
+Manage your Nebula service with these standard commands:
+
+*   **Check Status**: `systemctl status nebula`
+*   **Restart Panel**: `systemctl restart nebula`
+*   **View Real-time Logs**: `journalctl -u nebula -f`
+
+### Web Configuration
+
+The installer automatically handles:
+*   **Nginx**: Creates VHost config at `/etc/nginx/sites-available/nebula.conf`
+*   **Cloudflare**: Installs `cloudflared` and sets up the service automatically.
 
 ---
 
